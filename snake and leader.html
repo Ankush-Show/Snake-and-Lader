@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Snakes & Ladders — Single File</title>
+  <style>
+    :root{
+      --board-size: 520px;
+      --cell-size: calc(var(--board-size) / 10);
+      --accent: #0f9d58;
+      --danger: #d9534f;
+      --bg: #f8f9fa;
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#eef2ff 0%, #f8fafc 100%);}
+    .container{width:950px;max-width:95vw;padding:18px;background:white;border-radius:12px;box-shadow:0 6px 30px rgba(20,30,50,0.08);display:grid;grid-template-columns: 1fr 360px;gap:20px}
+
+  
+    .board-wrap{display:flex;flex-direction:column;gap:12px;align-items:center}
+    .board{width:var(--board-size);height:var(--board-size);display:grid;grid-template-columns:repeat(10,1fr);grid-auto-rows:1fr;border-radius:8px;overflow:hidden;border:4px solid #e6edf3}
+    .cell{width:var(--cell-size);height:var(--cell-size);display:flex;align-items:flex-start;justify-content:flex-end;padding:6px;box-sizing:border-box;font-size:12px}
+    .cell:nth-child(odd){background:linear-gradient(180deg,#ffffff,#f3fbff)}
+    .cell:nth-child(even){background:linear-gradient(180deg,#f6fff5,#f8fff8)}
+    .cell .num{opacity:.8}
+
+    
+    .token{position:absolute;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;box-shadow:0 3px 10px rgba(0,0,0,.12)}
+    .token.p1{background:var(--accent)}
+    .token.p2{background:#ffb800}
+
+    
+    .sidebar{padding:12px;border-radius:8px;background:#fbfdff;display:flex;flex-direction:column;gap:12px;border:1px solid #eef4f7}
+    h2{margin:0;font-size:18px}
+    .controls{display:flex;gap:8px;align-items:center}
+    button{border:0;background:var(--accent);color:white;padding:10px 14px;border-radius:8px;font-weight:600;cursor:pointer}
+    button.secondary{background:#3498db}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .dice{width:72px;height:72px;border-radius:12px;background:#fff;border:2px solid #eef4f7;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800}
+    .status{padding:10px;border-radius:8px;background:white;border:1px dashed #e6edf3}
+    .log{height:180px;overflow:auto;padding:8px;border-radius:8px;background:white;border:1px solid #eef4f7;font-size:13px}
+
+    footer.small{font-size:12px;color:#5c6b73}
+
+   
+    @media (max-width:900px){.container{grid-template-columns:1fr;max-width:760px}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="board-wrap">
+      <div style="position:relative">
+        <div id="board" class="board" aria-label="Snakes and Ladders board"></div>
+        
+        <div id="tokens"></div>
+      </div>
+      <div class="legend small" style="display:flex;gap:12px;align-items:center;">
+        <div style="display:flex;gap:6px;align-items:center"><div style="width:12px;height:12px;background:var(--accent);border-radius:3px"></div>Player 1</div>
+        <div style="display:flex;gap:6px;align-items:center"><div style="width:12px;height:12px;background:#ffb800;border-radius:3px"></div>Player 2</div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Snakes & Ladders</h2>
+        <div class="small">10 x 10 board</div>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="dice" id="diceDisplay">—</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="controls">
+            <button id="rollBtn">Roll Dice</button>
+            <button class="secondary" id="resetBtn">Reset</button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <label style="font-size:13px">Mode:</label>
+            <select id="modeSelect">
+              <option value="pvp">2 Players (Hotseat)</option>
+              <option value="pvc">Player vs Computer</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="status" id="status">Click <strong>Roll Dice</strong> to start. Player 1 goes first.</div>
+
+      <div>
+        <h3 style="margin:6px 0">Game log</h3>
+        <div id="log" class="log"></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div><strong>Player 1</strong> — token A</div>
+          <div><strong>Player 2</strong> — token B</div>
+        </div>
+        <div class="small">Made for you — run in a browser</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+   
+    const snakes = {
+      16: 6,
+      47: 26,
+      49: 11,
+      56: 53,
+      62: 19,
+      64: 60,
+      87: 24,
+      93: 73,
+      95: 75,
+      98: 78
+    };
+    const ladders = {
+      1: 38,
+      4: 14,
+      9: 31,
+      21: 42,
+      28: 84,
+      36: 44,
+      51: 67,
+      71: 91,
+      80: 100
+    };
+
+    
+    const boardEl = document.getElementById('board');
+    const diceDisplay = document.getElementById('diceDisplay');
+    const rollBtn = document.getElementById('rollBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const tokensWrap = document.getElementById('tokens');
+    const modeSelect = document.getElementById('modeSelect');
+
+   
+    const cells = [];
+    for(let row=9; row>=0; row--){
+      const leftToRight = (9 - row) % 2 === 0; 
+      const start = row * 10 + 1;
+      const arr = [];
+      for(let i=0;i<10;i++) arr.push(start + i);
+      if(!leftToRight) arr.reverse();
+      arr.forEach(n=>cells.push(n));
+    }
+
+   
+    cells.forEach(n => {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.n = n;
+      cell.innerHTML = `<div class="num">${n}</div>`;
+      
+      if(ladders[n]){
+        const el = document.createElement('div');
+        el.textContent = '⬆';
+        el.title = `Ladder to ${ladders[n]}`;
+        el.style.opacity = '0.9';
+        el.style.fontSize = '12px';
+        cell.appendChild(el);
+      }
+      if(snakes[n]){
+        const el = document.createElement('div');
+        el.textContent = '⬇';
+        el.title = `Snake to ${snakes[n]}`;
+        el.style.opacity = '0.9';
+        el.style.fontSize = '12px';
+        cell.appendChild(el);
+      }
+      boardEl.appendChild(cell);
+    });
+
+    
+    const players = [
+      { id: 'p1', label: 'A', colorClass: 'p1', pos: 0, el: null },
+      { id: 'p2', label: 'B', colorClass: 'p2', pos: 0, el: null }
+    ];
+
+    
+    function createTokens(){
+      tokensWrap.innerHTML = '';
+      players.forEach((p, i) => {
+        const t = document.createElement('div');
+        t.className = `token ${p.id}`;
+        t.textContent = p.label;
+        t.style.transform = 'translate(0px,0px)';
+        t.style.position = 'absolute';
+        t.style.left = '0px';
+        t.style.top = '0px';
+        t.style.zIndex = 100 + i;
+        tokensWrap.appendChild(t);
+        p.el = t;
+      });
+      
+      updateTokenPositions();
+    }
+
+    function getCellRect(n){
+      const cell = boardEl.querySelector(`.cell[data-n='${n}']`);
+      if(!cell) return null;
+     
+      const wrapperRect = boardEl.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      return {
+        left: cellRect.left - wrapperRect.left + 6,
+        top: cellRect.top - wrapperRect.top + 6,
+        width: cellRect.width,
+        height: cellRect.height
+      };
+    }
+
+    function updateTokenPositions(){
+      players.forEach((p, idx) => {
+        const pos = p.pos === 0 ? 1 : p.pos; 
+        const rect = getCellRect(pos);
+        if(!rect) return;
+        
+        const offsetX = idx === 0 ? -12 : 12;
+        const x = rect.left + rect.width/2 - 13 + offsetX;
+        const y = rect.top + rect.height/2 - 13;
+        p.el.style.left = x + 'px';
+        p.el.style.top = y + 'px';
+      });
+    }
+
+    
+    let current = 0; 
+    let rolling = false;
+    let gameOver = false;
+
+    function log(msg){
+      const p = document.createElement('div');
+      p.textContent = msg;
+      logEl.prepend(p);
+    }
+
+    function rollDice(){
+      if(rolling || gameOver) return;
+      rolling = true;
+      rollBtn.disabled = true;
+      diceDisplay.textContent = '...';
+      animateDice().then(value => {
+        diceDisplay.textContent = value;
+        handleMove(value);
+      }).finally(()=>{
+        rolling = false;
+        if(!gameOver) rollBtn.disabled = false;
+      });
+    }
+
+    function animateDice(){
+      return new Promise(res => {
+        const spins = 12 + Math.floor(Math.random()*8);
+        let i=0;
+        const iv = setInterval(()=>{
+          const v = 1 + Math.floor(Math.random()*6);
+          diceDisplay.textContent = v;
+          i++;
+          if(i>=spins){
+            clearInterval(iv);
+            const final = 1 + Math.floor(Math.random()*6);
+            setTimeout(()=>res(final),100);
+          }
+        },60);
+      });
+    }
+
+    async function handleMove(dice){
+      const p = players[current];
+      log(`Player ${current+1} rolled ${dice}`);
+
+      
+      for(let step=0; step<dice; step++){
+        if(p.pos + 1 <= 100) p.pos++;
+        updateTokenPositions();
+        await wait(180);
+      }
+
+      
+      if(p.pos > 100){
+        const overflow = p.pos - 100;
+        p.pos = 100 - overflow;
+        log(`Bounced back to ${p.pos}`);
+        updateTokenPositions();
+      }
+
+      
+      if(ladders[p.pos]){
+        log(`Hit ladder at ${p.pos} -> climb to ${ladders[p.pos]}`);
+        p.pos = ladders[p.pos];
+        updateTokenPositions();
+      } else if(snakes[p.pos]){
+        log(`Bitten by snake at ${p.pos} -> slide to ${snakes[p.pos]}`);
+        p.pos = snakes[p.pos];
+        updateTokenPositions();
+      }
+
+     
+      if(p.pos === 100){
+        gameOver = true;
+        statusEl.innerHTML = `<strong>Player ${current+1} wins! 🎉</strong>`;
+        log(`Player ${current+1} reached 100 and won the game.`);
+        rollBtn.disabled = true;
+        return;
+      }
+
+      
+      if(dice === 6){
+        log(`Player ${current+1} rolled a 6 and gets another turn`);
+        statusEl.textContent = `Player ${current+1} rolled a 6 — roll again.`;
+        
+        if(modeSelect.value === 'pvc' && current === 1){
+          await wait(600);
+          robotTurn();
+        }
+        return; 
+      }
+
+      
+      current = (current + 1) % 2;
+      statusEl.textContent = `Player ${current+1}'s turn.`;
+
+     
+      if(modeSelect.value === 'pvc' && current === 1){
+        await wait(700);
+        robotTurn();
+      }
+    }
+
+    function robotTurn(){
+      
+      if(gameOver) return;
+      rollDice();
+    }
+
+    function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+
+   
+    function resetGame(){
+      players.forEach(p => p.pos = 0);
+      current = 0;
+      gameOver = false;
+      diceDisplay.textContent = '—';
+      logEl.innerHTML = '';
+      statusEl.innerHTML = 'Click <strong>Roll Dice</strong> to start. Player 1 goes first.';
+      rollBtn.disabled = false;
+      updateTokenPositions();
+    }
+
+    
+    rollBtn.addEventListener('click',()=>{ if(modeSelect.value==='pvc' && current===1){ /* prevent human rolling during CPU turn */ } rollDice(); });
+    resetBtn.addEventListener('click',()=>{ resetGame(); });
+    window.addEventListener('resize', updateTokenPositions);
+    modeSelect.addEventListener('change', ()=>{
+      resetGame();
+      log(`Mode changed to ${modeSelect.value === 'pvc' ? 'Player vs Computer' : '2 Players'}`);
+    });
+
+    
+    createTokens();
+    
+    tokensWrap.style.position = 'absolute';
+    tokensWrap.style.left = boardEl.offsetLeft + 'px';
+    tokensWrap.style.top = boardEl.offsetTop + 'px';
+    tokensWrap.style.width = boardEl.offsetWidth + 'px';
+    tokensWrap.style.height = boardEl.offsetHeight + 'px';
+    tokensWrap.style.pointerEvents = 'none';
+
+    
+    (function fixTokenParent(){
+      const parent = boardEl.parentElement; 
+      parent.style.position = 'relative';
+      tokensWrap.style.position = 'absolute';
+      tokensWrap.style.left = '0px';
+      tokensWrap.style.top = '0px';
+      tokensWrap.style.width = '100%';
+      tokensWrap.style.height = '100%';
+      tokensWrap.style.pointerEvents = 'none';
+      updateTokenPositions();
+    })();
+
+  
+    log('Board ready — good luck!');
+
+  </script>
+</body>
+</html>
